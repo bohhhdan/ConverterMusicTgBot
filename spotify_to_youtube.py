@@ -82,15 +82,37 @@ def add_video_to_playlist(youtube, playlist_id, video_id):
     request.execute()
 
 
-def add_video_to_playlist_YouTube(youtube, playlist_id, details):
-    """Add a video to a YouTube playlist by URL or by search query."""
+def add_video_to_playlist(youtube, playlist_id, video_id):
+    request = youtube.playlistItems().insert(
+        part="snippet",
+        body={
+            "snippet": {
+                "playlistId": playlist_id,
+                "resourceId": {
+                    "kind": "youtube#video",
+                    "videoId": video_id
+                }
+            }
+        }
+    )
+    request.execute()
 
-    # Case 1: If the details contain a valid YouTube URL
+
+def extract_playlist_id_from_url(url):
+
+    match = re.search(r'(?:list=)([a-zA-Z0-9_-]+)', url)
+    if match:
+        return match.group(1)
+    return None
+
+
+
+def add_video_to_playlist_YouTube(youtube, playlist_id, details):
+    playlist_id = extract_playlist_id_from_url(playlist_id)
     if "youtube.com/watch?v=" in details or "youtu.be/" in details:
         video_id = extract_video_id_from_url(details)
         if video_id:
             try:
-                # Add the video to the playlist using the video ID
                 request = youtube.playlistItems().insert(
                     part="snippet",
                     body={
@@ -113,7 +135,7 @@ def add_video_to_playlist_YouTube(youtube, playlist_id, details):
     # Case 2: If the details are a search query (no URL provided)
     else:
         try:
-            # Search for the video using the details (search query)
+
             request = youtube.search().list(
                 part="snippet",
                 q=details,
@@ -123,10 +145,9 @@ def add_video_to_playlist_YouTube(youtube, playlist_id, details):
             response = request.execute()
 
             if response['items']:
-                # Extract the video ID from the search result
                 video_id = response['items'][0]['id']['videoId']
 
-                # Add the video to the playlist
+
                 request = youtube.playlistItems().insert(
                     part="snippet",
                     body={
@@ -147,14 +168,14 @@ def add_video_to_playlist_YouTube(youtube, playlist_id, details):
             return f"❌ Error during search and addition: {str(e)}"
 
 
+
 def extract_video_id_from_url(url):
-    """Extract the video ID from a YouTube URL."""
     youtube_regex = (
         r"(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]+)"
     )
     match = re.match(youtube_regex, url)
     if match:
-        return match.group(4)  # Return the video ID
+        return match.group(4)
     return None
 
 def extract_playlist_id(spotify_url):
