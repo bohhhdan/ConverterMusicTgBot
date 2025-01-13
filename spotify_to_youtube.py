@@ -23,6 +23,62 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 
+def search_youtube_videos(youtube, query, max_results=5):
+    """Search for videos on YouTube and return multiple results."""
+    try:
+        request = youtube.search().list(
+            part="snippet",
+            q=query,
+            type="video",
+            maxResults=max_results
+        )
+        response = request.execute()
+        return response['items']
+    except Exception as e:
+        print(f"Error searching videos: {str(e)}")
+        return []
+
+
+def convert_spotify_to_yt(spotify_playlist_url):
+    try:
+        playlist_id = extract_playlist_id(spotify_playlist_url)
+    except ValueError as e:
+        return str(e)
+
+    results = sp.playlist_tracks(playlist_id)
+    youtube = authenticate_youtube()
+    yt_playlist_id = create_youtube_playlist(youtube)
+    youtube_urls = []
+
+    for item in results['items']:
+        track = item['track']
+        query = f"{track['name']} {track['artists'][0]['name']}"
+
+        # Search for videos
+        videos = search_youtube_videos(youtube, query)
+        if videos:
+            # Display options
+            print(f"\nFound multiple matches for: {query}")
+            for idx, video in enumerate(videos[:5], 1):
+                print(f"{idx}. {video['snippet']['title']} - {video['snippet']['channelTitle']}")
+
+            # Get user selection
+            while True:
+                try:
+                    selection = int(input("Select a video (1-5): "))
+                    if 1 <= selection <= len(videos):
+                        selected_video = videos[selection - 1]
+                        video_id = selected_video['id']['videoId']
+                        add_video_to_playlist(youtube, yt_playlist_id, video_id)
+                        youtube_urls.append(f"https://www.youtube.com/watch?v={video_id}")
+                        print(f"✅ Added: {selected_video['snippet']['title']}")
+                        break
+                    else:
+                        print("❌ Invalid selection. Please try again.")
+                except ValueError:
+                    print("❌ Please enter a valid number.")
+
+    return f"https://www.youtube.com/playlist?list={yt_playlist_id}"
 def authenticate_youtube():
     creds = None
     if os.path.exists("token.json"):
