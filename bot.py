@@ -185,29 +185,7 @@ async def handle_text(_, message):
                 except Exception as e:
                     await message.reply(f"❌ Failed to export Spotify playlist: {str(e)}")
 
-            elif platform == "youtube":
-                try:
-                    youtube = authenticate_youtube()
-                    playlist_items = youtube.playlistItems().list(
-                        part="snippet", playlistId=playlist_id, maxResults=50
-                    ).execute()
-                    tracks = [
-                        f"{idx + 1}. {item['snippet']['title']}"
-                        for idx, item in enumerate(playlist_items["items"])
-                    ]
-                    file_name = export_playlist_to_test_file(tracks)
-                    await message.reply_document(file_name)
-                    os.remove(file_name)
-                except Exception as e:
-                    await message.reply(f"❌ Failed to export YouTube playlist: {str(e)}")
 
-            else:
-                await message.reply("❌ Unsupported platform. Please choose either Spotify or YouTube.")
-
-        except ValueError:
-            await message.reply("❌ Invalid format. Use: Platform, Playlist ID")
-
-        user_states[user_id] = None
 
     elif state == "awaiting_delete_details":
         try:
@@ -253,21 +231,6 @@ async def handle_text(_, message):
                 )
                 response = request.execute()
 
-                if response.get('items'):
-                    user_data[user_id] = {
-                        "videos": response['items'],
-                        "playlist_id": playlist_id
-                    }
-                    user_states[user_id] = "awaiting_video_selection"
-
-                    options_text = "Found multiple videos. Please select one by sending its number (1-5):\n\n"
-                    for idx, video in enumerate(response['items'], 1):
-                        title = video['snippet']['title']
-                        channel = video['snippet']['channelTitle']
-                        options_text += f"{idx}. {title} - {channel}\n"
-                    await message.reply(options_text)
-                else:
-                    await message.reply("❌ No videos found for your search.")
 
             elif platform.lower() == "spotify":
                 try:
