@@ -300,7 +300,41 @@ async def handle_text(_, message):
             await message.reply(f"❌ Failed to process request: {str(e)}")
 
     elif state == "awaiting_video_selection":
+        try:
+            selection = int(message.text)
+            if user_id in user_data and 1 <= selection <= 5:
+                videos = user_data[user_id]["videos"]
+                selected_video = videos[selection - 1]
+                video_id = selected_video['id']['videoId']
+                playlist_id = user_data[user_id]["playlist_id"]
 
+                youtube = authenticate_youtube()
+                try:
+                    request = youtube.playlistItems().insert(
+                        part="snippet",
+                        body={
+                            "snippet": {
+                                "playlistId": playlist_id,
+                                "resourceId": {
+                                    "kind": "youtube#video",
+                                    "videoId": video_id
+                                }
+                            }
+                        }
+                    )
+                    request.execute()
+                    await message.reply(f"✅ Added: {selected_video['snippet']['title']}")
+                except Exception as e:
+                    await message.reply(f"❌ Error adding video: {str(e)}")
+
+                del user_data[user_id]
+                user_states[user_id] = None
+            else:
+                await message.reply("❌ Please select a valid number between 1 and 5.")
+        except ValueError:
+            await message.reply("❌ Please enter a valid number.")
+        except Exception as e:
+            await message.reply(f"❌ Error processing selection: {str(e)}")
 
     elif state == "awaiting_track_selection":
         try:
