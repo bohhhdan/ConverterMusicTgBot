@@ -5,13 +5,14 @@ import os
 SPOTIFY_CLIENT_ID = 'bbef9944f39449c2b689b2db4a0a0d1c'
 SPOTIFY_CLIENT_SECRET = 'ad7ed1882b9148119957784e0fa24d7f'
 SPOTIFY_REDIRECT_URI = 'http://localhost:8888/callback'
-SCOPE = "playlist-modify-public"
+SCOPE = "playlist-modify-public playlist-modify-private"
 
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     client_id=SPOTIFY_CLIENT_ID,
     client_secret=SPOTIFY_CLIENT_SECRET,
     redirect_uri=SPOTIFY_REDIRECT_URI,
-    scope=SCOPE
+    scope=SCOPE,
+    open_browser=False
 ))
 
 

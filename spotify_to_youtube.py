@@ -1,4 +1,3 @@
-
 import re
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -111,11 +110,11 @@ def create_youtube_playlist(youtube, title="Converted Spotify Playlist", descrip
             "snippet": {
                 "title": title,
                 "description": description,
-                "tags": ["Music", "Spotify", "Converted"],
+                "tags": ["Music", "Converted"],
                 "defaultLanguage": "en"
             },
             "status": {
-                "privacyStatus": "private"  # Change to "private" if needed
+                "privacyStatus": "private"
             }
         }
     )
