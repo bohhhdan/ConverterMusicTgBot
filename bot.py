@@ -98,6 +98,17 @@ def delete_video_from_youtube_playlist(youtube, playlist_id, details):
 
 @app.on_message(filters.command("start"))
 async def start(_, message):
+    welcome_text = (
+        "🎵 Welcome to Playlist Manager Bot! 🎵\n\n"
+        "Here's what I can do for you:\n"
+        "• Convert playlists between Spotify and YouTube\n"
+        "• Create new playlists on either platform\n"
+        "• Export playlist contents to a text file\n"
+        "• Add songs to your playlists\n"
+        "• Delete songs from your playlists\n\n"
+        "Choose an option below to get started:"
+    )
+    
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Convert", callback_data="convert")],
         [InlineKeyboardButton("Create Playlist", callback_data="create_playlist")],
@@ -105,7 +116,7 @@ async def start(_, message):
         [InlineKeyboardButton("Add Song", callback_data="add_song")],
         [InlineKeyboardButton("Delete Song", callback_data="delete_song")]
     ])
-    await message.reply("Welcome! Choose an option:", reply_markup=keyboard)
+    await message.reply(welcome_text, reply_markup=keyboard)
 
 @app.on_callback_query()
 async def handle_callback_query(client, callback_query):
