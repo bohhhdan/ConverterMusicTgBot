@@ -1,6 +1,8 @@
 from pyrogram import Client, filters
-from spotify_to_youtube import authenticate_youtube, add_video_to_playlist_YouTube, convert_spotify_to_yt
-from youtube_to_spotify import convert_yt_to_spotify, sp
+from spotify_to_youtube import authenticate_youtube, add_video_to_playlist_YouTube, convert_spotify_to_yt, create_youtube_playlist
+from youtube_to_spotify import convert_yt_to_spotify
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
 from googleapiclient.errors import HttpError
 import os
 import re
@@ -9,6 +11,23 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 API_ID = '24032315'
 API_HASH = '0febaaa3772a959ffd1007396b575353'
 BOT_TOKEN = '7618243056:AAE3bCvVPfBYSIkgIPtmF4lEcZbbn4lxHK8'
+
+# Spotify Configuration
+SPOTIFY_CLIENT_ID = 'bbef9944f39449c2b689b2db4a0a0d1c'
+SPOTIFY_CLIENT_SECRET = 'ad7ed1882b9148119957784e0fa24d7f'
+SPOTIFY_REDIRECT_URI = 'http://localhost:8888/callback'
+SCOPE = "playlist-modify-public playlist-modify-private"
+CACHE_PATH = ".spotify_cache"
+
+# Initialize Spotify with proper caching
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET,
+    redirect_uri=SPOTIFY_REDIRECT_URI,
+    scope=SCOPE,
+    open_browser=False,
+    cache_path=CACHE_PATH
+))
 
 app = Client("playlist_manager_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -98,6 +117,7 @@ def delete_video_from_youtube_playlist(youtube, playlist_id, details):
 
 @app.on_message(filters.command("start"))
 async def start(_, message):
+
     welcome_text = (
         "🎵 Welcome to Playlist Manager Bot! 🎵\n\n"
         "Here's what I can do for you:\n"
@@ -107,6 +127,7 @@ async def start(_, message):
         "• Add songs to your playlists\n"
         "• Delete songs from your playlists\n\n"
         "Choose an option below to get started:"
+
     )
     
     keyboard = InlineKeyboardMarkup([
@@ -199,6 +220,11 @@ async def add_song(_, message):
 async def delete_song(_, message):
     user_states[message.from_user.id] = "awaiting_delete_details"
     await message.reply("Provide the platform (Spotify/YouTube), playlist ID, and song details in the format: \nPlatform, Playlist ID, Song/Video ID")
+
+@app.on_message(filters.command("create_playlist"))
+async def create_playlist(_, message):
+    user_states[message.from_user.id] = "awaiting_create_platform"
+    await message.reply("Which platform do you want to create the playlist on?\nReply with either *Spotify* or *YouTube*")
 
 @app.on_message(filters.text)
 async def handle_text(_, message):
@@ -428,8 +454,127 @@ async def handle_text(_, message):
         except Exception as e:
             await message.reply(f"❌ Error processing selection: {str(e)}")
 
+    elif state == "awaiting_create_platform":
+        platform = message.text.lower()
+        if platform in ["spotify", "youtube"]:
+            user_data[user_id] = {"platform": platform}
+            user_states[user_id] = "awaiting_playlist_name"
+            await message.reply("Please enter a name for your playlist:")
+        else:
+            await message.reply("❌ Please choose either Spotify or YouTube")
+
+    elif state == "awaiting_playlist_name":
+        playlist_name = message.text
+        platform = user_data[user_id]["platform"]
+        
+        if platform == "spotify":
+            try:
+                # First check if we need to authenticate
+                try:
+                    user_id_spotify = sp.me()['id']
+                except Exception:
+                    # Clear cache and reinitialize if authentication fails
+                    if os.path.exists(CACHE_PATH):
+                        os.remove(CACHE_PATH)
+                    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+                        client_id=SPOTIFY_CLIENT_ID,
+                        client_secret=SPOTIFY_CLIENT_SECRET,
+                        redirect_uri=SPOTIFY_REDIRECT_URI,
+                        scope=SCOPE,
+                        open_browser=False,
+                        cache_path=CACHE_PATH
+                    ))
+                    await message.reply(
+                        "⚠️ Spotify authentication required!\n"
+                        "1. Visit: https://developer.spotify.com/dashboard\n"
+                        "2. Log in with your Spotify account\n"
+                        "3. Create a new app if you haven't already\n"
+                        "4. Add http://localhost:8888/callback to Redirect URIs in app settings\n"
+                        "5. Try creating the playlist again after completing these steps"
+                    )
+                    if user_id in user_data:
+                        del user_data[user_id]
+                    user_states[user_id] = None
+                    return
+
+                # Create playlist if authenticated
+                playlist = sp.user_playlist_create(
+                    user_id_spotify,
+                    playlist_name,
+                    public=False,
+                    description="Created by Playlist Manager Bot"
+                )
+                await message.reply(
+                    f"✅ Empty Spotify playlist '{playlist_name}' created!\n"
+                    f"Here's your link: {playlist['external_urls']['spotify']}"
+                )
+            except Exception as e:
+                error_msg = str(e)
+                if "http status: 403" in error_msg.lower():
+                    await message.reply(
+                        "❌ Failed to create Spotify playlist: Authentication required.\n"
+                        "Please follow these steps:\n"
+                        "1. Visit: https://developer.spotify.com/dashboard\n"
+                        "2. Log in with your Spotify account\n"
+                        "3. Create a new app if you haven't already\n"
+                        "4. Add http://localhost:8888/callback to Redirect URIs in app settings\n"
+                        "5. Try again after completing these steps"
+                    )
+                else:
+                    await message.reply(f"❌ Failed to create Spotify playlist: {error_msg}")
+        
+        elif platform == "youtube":
+            try:
+                youtube = authenticate_youtube()
+                playlist_id = create_youtube_playlist(youtube, playlist_name, f"Created by Playlist Manager Bot")
+                playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+                
+                # Verify the playlist was created
+                try:
+                    request = youtube.playlists().list(
+                        part="snippet",
+                        id=playlist_id
+                    )
+                    response = request.execute()
+                    if 'items' in response and response['items']:
+                        await message.reply(
+                            f"✅ Empty YouTube playlist '{playlist_name}' created!\n"
+                            f"Here's your link: {playlist_url}"
+                        )
+                    else:
+                        await message.reply("❌ Failed to create YouTube playlist: Playlist verification failed")
+                except HttpError as e:
+                    if "quotaExceeded" in str(e):
+                        await message.reply(
+                            "❌ YouTube API quota exceeded. Please try again tomorrow."
+                        )
+                    else:
+                        await message.reply(f"❌ Failed to verify YouTube playlist: {str(e)}")
+            except Exception as e:
+                error_msg = str(e)
+                if "quota" in error_msg.lower():
+                    await message.reply(
+                        "❌ YouTube API quota exceeded. Please try again tomorrow."
+                    )
+                elif "token" in error_msg.lower():
+                    await message.reply(
+                        "❌ YouTube authentication required. Please follow these steps:\n"
+                        "1. Make sure you have a Google Cloud project\n"
+                        "2. Enable YouTube Data API v3\n"
+                        "3. Create OAuth 2.0 credentials\n"
+                        "4. Download the client_secret.json file\n"
+                        "5. Place it in the bot's directory\n"
+                        "6. Try again"
+                    )
+                else:
+                    await message.reply(f"❌ Failed to create YouTube playlist: {error_msg}")
+        
+        if user_id in user_data:
+            del user_data[user_id]
+        user_states[user_id] = None
+
     else:
-        await message.reply("Please start by using /add_song or /delete_song to manage playlists.")
+        await message.reply("Please use one of the available commands:\n/convert - Convert playlists\n/add_song - Add songs\n/delete_song - Delete songs\n/create_playlist - Create empty playlist\n/export_playlist - Export playlist data")
 
 async def present_options_as_buttons(options, message, prefix):
     keyboard = InlineKeyboardMarkup([
