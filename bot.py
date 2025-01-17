@@ -4,6 +4,7 @@ from youtube_to_spotify import convert_yt_to_spotify, sp
 from googleapiclient.errors import HttpError
 import os
 import re
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 API_ID = '24032315'
 API_HASH = '0febaaa3772a959ffd1007396b575353'
@@ -97,22 +98,78 @@ def delete_video_from_youtube_playlist(youtube, playlist_id, details):
 
 @app.on_message(filters.command("start"))
 async def start(_, message):
-    user_states[message.from_user.id] = "awaiting_platform"
-    await message.reply(
-        "🎶 Welcome to the Playlist Converter Bot!\n\n"
-        "I can help you transfer playlists between Spotify and YouTube Music.\n"
-        "Please tell me:\n\n"
-        "1️⃣ From which platform would you like to transfer?\n"
-        "2️⃣ To which platform should I convert it?\n\n"
-        "Use /convert to begin the transfer process.\n"
-        "Use /add_song or /delete_song to manage playlists.\n"
-        "/export_playlist - Export playlist data to a text file.\n"
-    )
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Convert", callback_data="convert")],
+        [InlineKeyboardButton("Create Playlist", callback_data="create_playlist")],
+        [InlineKeyboardButton("Export Playlist", callback_data="export_playlist")],
+        [InlineKeyboardButton("Add Song", callback_data="add_song")],
+        [InlineKeyboardButton("Delete Song", callback_data="delete_song")]
+    ])
+    await message.reply("Welcome! Choose an option:", reply_markup=keyboard)
+
+@app.on_callback_query()
+async def handle_callback_query(client, callback_query):
+    data = callback_query.data
+    if data == "convert":
+        await convert(client, callback_query.message)
+    elif data == "create_playlist":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Spotify", callback_data="create_spotify_playlist")],
+            [InlineKeyboardButton("YouTube", callback_data="create_youtube_playlist")]
+        ])
+        await callback_query.message.reply("Choose platform to create playlist:", reply_markup=keyboard)
+    elif data == "create_spotify_playlist":
+        try:
+            playlist = sp.user_playlist_create(
+                user=sp.current_user()["id"],
+                name="Vacant Playlist",
+                public=True,
+                description="Created via Playlist Manager Bot"
+            )
+            await callback_query.message.reply(f"✅ Empty Spotify playlist created!\nLink: {playlist['external_urls']['spotify']}")
+        except Exception as e:
+            await callback_query.message.reply(f"❌ Error creating Spotify playlist: {str(e)}")
+    elif data == "create_youtube_playlist":
+        try:
+            youtube = authenticate_youtube()
+            playlist = youtube.playlists().insert(
+                part="snippet,status",
+                body={
+                    "snippet": {
+                        "title": "Vacant Playlist",
+                        "description": "Created via Playlist Manager Bot"
+                    },
+                    "status": {
+                        "privacyStatus": "public"
+                    }
+                }
+            ).execute()
+            playlist_id = playlist["id"]
+            playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+            await callback_query.message.reply(f"✅ Empty YouTube playlist created!\nLink: {playlist_url}")
+        except Exception as e:
+            await callback_query.message.reply(f"❌ Error creating YouTube playlist: {str(e)}")
+    elif data == "export_playlist":
+        await export_playlist(client, callback_query.message)
+    elif data == "add_song":
+        await add_song(client, callback_query.message)
+    elif data == "delete_song":
+        await delete_song(client, callback_query.message)
+    elif data == "convert_spotify":
+        user_states[callback_query.from_user.id] = "awaiting_spotify_link"
+        await callback_query.message.reply("Great! Now, paste the Spotify playlist link:")
+    elif data == "convert_youtube":
+        user_states[callback_query.from_user.id] = "awaiting_youtube_link"
+        await callback_query.message.reply("Awesome! Now, paste the YouTube playlist link:")
+    await callback_query.answer()
 
 @app.on_message(filters.command("convert"))
 async def convert(_, message):
-    user_states[message.from_user.id] = "awaiting_conversion_platform"
-    await message.reply("Which platform do you want to transfer from?\nReply with either *Spotify* or *YouTube*.")
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Spotify", callback_data="convert_spotify")],
+        [InlineKeyboardButton("YouTube", callback_data="convert_youtube")]
+    ])
+    await message.reply("Which platform do you want to transfer from?", reply_markup=keyboard)
 
 @app.on_message(filters.command("export_playlist"))
 async def export_playlist(_, message):
@@ -362,6 +419,13 @@ async def handle_text(_, message):
 
     else:
         await message.reply("Please start by using /add_song or /delete_song to manage playlists.")
+
+async def present_options_as_buttons(options, message, prefix):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"{idx + 1}. {option}", callback_data=f"{prefix}_{idx}")]
+        for idx, option in enumerate(options)
+    ])
+    await message.reply("Please select an option:", reply_markup=keyboard)
 
 if __name__ == "__main__":
     app.run()
